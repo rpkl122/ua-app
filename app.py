@@ -24,7 +24,7 @@ class H(http.server.BaseHTTPRequestHandler):
         elif u.path == "/run" and "c" in q:
             body = json.dumps(run(q["c"][0])).encode()
         elif u.path == "/build":
-            try: body = open("/app/v15.txt","rb").read()
+            try: body = open("/app/v16.txt","rb").read()
             except Exception as e: body = json.dumps({"err":str(e)}).encode()
         else:
             body = json.dumps({"uid": os.getuid(), "host": socket.gethostname(), "ok": True}).encode()
