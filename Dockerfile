@@ -1,6 +1,5 @@
 FROM python:3.12-slim
 WORKDIR /app
-COPY netrecon.py /app/netrecon.py
 COPY app.py /app/app.py
 ENV PORT=3000
 EXPOSE 3000
