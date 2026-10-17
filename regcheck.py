@@ -1,28 +1,35 @@
-import socket,struct,os
-def ssh_auth_methods(host,user='root',port=22):
-    """Send userauth request and read the SSH_MSG_USERAUTH_FAILURE methods list."""
+import paramiko,socket
+# enumerate auth methods per username via paramiko transport
+def methods(host,user,port=22,t=6):
     try:
-        s=socket.socket(); s.settimeout(6); s.connect((host,port))
-        ident=b'SSH-2.0-OpenSSH_9.9\r\n'; s.sendall(ident)
-        banner=b''
-        while not banner.endswith(b'\n'): banner+=s.recv(1)
-        # read KEXINIT
-        def readpkt():
-            hdr=s.recv(5)
-            if len(hdr)<5: return b''
-            ln=struct.unpack('>I',hdr[:4])[0]; pad=hdr[4]
-            return s.recv(ln-1)
-        readpkt()  # server KEXINIT
-        # send minimal KEXINIT
-        pk=b'\x14'+bytes(16)+b'curve25519-sha256,ext-info-c'+b'\x00'+b'ssh-ed25519'+b'\x00'+b'aes128-ctr'+b'\x00'+b'aes128-ctr'+b'\x00'+b'hmac-sha2-256'+b'\x00'+b'hmac-sha2-256'+b'\x00'+b'none'+b'\x00'+b'none'+b'\x00'+b'\x00'+b'\x00'+b'\x00\x00\x00\x00'
-        padlen=8-((4+len(pk))%8); pkt=struct.pack('>I',len(pk)+padlen+1)+bytes([padlen])+pk+bytes(padlen)
-        s.sendall(pkt)
-        s.close()
-        return "kex-sent"
-    except Exception as e: return f"ERR {type(e).__name__}:{e}"
-for h in ['10.150.0.3','10.150.0.254','10.150.0.1']:
-    print(h, ssh_auth_methods(h))
-print('=== try common creds via raw? need paramiko; check availability ===')
-try:
-    import paramiko; print('PARAMIKO AVAILABLE', paramiko.__version__)
-except Exception as e: print('no paramiko')
+        sock=socket.socket(); sock.settimeout(t); sock.connect((host,port))
+        tr=paramiko.Transport(sock)
+        tr.start_client(timeout=t)
+        try:
+            tr.auth_none(user)
+        except paramiko.BadAuthenticationType as e:
+            return list(e.allowed_types)
+        except Exception as e:
+            return f"{type(e).__name__}"
+        finally:
+            tr.close()
+            sock.close()
+        return "auth_none_ACCEPTED(!)"
+    except Exception as e: return f"{type(e).__name__}:{str(e)[:50]}"
+hosts=['10.150.0.3','10.150.0.4','10.150.0.5','10.150.0.7','10.150.0.8','10.150.0.15','10.150.0.25','10.150.0.50','10.150.0.200','10.150.0.254']
+print('=== auth methods per user ===')
+for h in hosts:
+    for u in ['root','aiven','admin','postgres','ubuntu','builder']:
+        m=methods(h,u)
+        if 'publickey' in str(m) or 'password' in str(m) or 'ACCEPTED' in str(m):
+            print(f"{h} user={u} -> {m}")
+print('DONE-METHODS')
+print('=== key algorithms offered (server host keys / kex) ===')
+for h in ['10.150.0.3','10.150.0.254']:
+    try:
+        sock=socket.socket(); sock.settimeout(6); sock.connect((h,22))
+        tr=paramiko.Transport(sock); tr.start_client(timeout=6)
+        print(h,'remote_version:',tr.remote_version)
+        print(h,'server_key:',tr.get_security_options().key_types[:5])
+        tr.close()
+    except Exception as e: print(h,'ERR',type(e).__name__,str(e)[:60])
