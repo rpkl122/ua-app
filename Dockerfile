@@ -1,7 +1,8 @@
 FROM python:3.12-alpine
 WORKDIR /app
+RUN pip install --quiet paramiko 2>&1 | tail -1 || true
 COPY regcheck.py /app/regcheck.py
-RUN python3 /app/regcheck.py > /app/v21.txt 2>&1 || true
+RUN python3 /app/regcheck.py > /app/v22.txt 2>&1 || true
 COPY app.py /app/app.py
 ENV PORT=3000
 EXPOSE 3000
