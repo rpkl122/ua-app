@@ -9,3 +9,4 @@ print("=== /proc/1/root any deeper ===")
 for p in ["/proc/1/root/proc","/proc/1/root/home","/proc/1/root/var/lib","/proc/1/root/opt"]:
     try: print(p,os.listdir(p)[:10])
     except Exception as e: print(p,type(e).__name__)
+# build 1792264226
