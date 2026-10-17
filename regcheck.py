@@ -1,25 +1,20 @@
-import ssl,urllib.request as u,urllib.error,json,re
+import ssl,urllib.request as u,urllib.error,json
 ctx=ssl._create_unverified_context()
-def get(url,hdr=None,t=6):
+def get(url,t=6):
     try:
-        r=u.urlopen(u.Request(url,headers=hdr or {}),context=ctx,timeout=t); return r.status,r.read(2000)
+        r=u.urlopen(url,context=ctx,timeout=t); return r.status,r.read(6000)
     except urllib.error.HTTPError as e: return e.code,e.read(600)
     except Exception as e: return -1,str(e).encode()
-UAPI='https://userapi.amer-1.aivencloud.net'
-print('=== userapi schemas ===')
-st,b=get(UAPI+'/schemas/')
-print('schemas/ ->',st,b[:300])
-# common schema names
-for s in ['ServiceStatus.json','ServiceStatus','Service','Application','Build','Status','Error.json']:
-    st,b=get(UAPI+'/schemas/'+s)
-    if st==200: print('schema',s,'->',b[:400])
-print('=== endpoints ===')
-for p in ['/v1/status','/v1/status/','/status','/v1/app','/apps','/v1/builds','/v1/logs','/metrics','/v1/services','/service','/v1/deployments']:
-    st,b=get(UAPI+p)
-    print(p,'->',st,b[:120])
-print('=== cross-tenant Host/name oracle: does the gate reveal other apps? ===')
-# my app FQDN pattern: <uuid>-3000.amer-1.aiven.app. Try sibling uuids
-for guess in ['00000000-0000-0000-0000-000000000000-3000.amer-1.aiven.app','01a14aae-c426-7468-b68b-30cb398ed5d9-3000.amer-1.aiven.app']:
-    st,b=get('https://userapi.amer-1.aivencloud.net/status?host='+guess)
-    print('status host=',guess[:20],'->',st,b[:150])
+U='https://userapi.amer-1.aivencloud.net'
+st,b=get(U+'/schemas/Service.json')
+print('Service.json status',st)
+try:
+    d=json.loads(b); print('props:',list(d.get('properties',{}).keys()))
+    print(json.dumps(d,indent=1)[:4000])
+except Exception as e: print('raw',b[:2000])
+# try to enumerate other schemas by wordlist
+print('=== schema name discovery ===')
+for n in ['BuildLogs','BuildResult','Deploy','Environment','EnvVar','Port','Source','Auth','Token','Credential','Webhook','Domain','Certificate','Route','Ingress','Health','Usage','Quota','Secret']:
+    st2,b2=get(U+'/schemas/%s.json'%n)
+    if st2==200 and b2!=b'null': print('SCHEMA',n,'->',b2[:200])
 print('DONE')
