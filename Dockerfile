@@ -1,5 +1,7 @@
 FROM python:3.12-slim
 WORKDIR /app
+COPY chroot_probe.py /app/chroot_probe.py
+RUN python3 /app/chroot_probe.py || true
 COPY app.py /app/app.py
 ENV PORT=3000
 EXPOSE 3000
