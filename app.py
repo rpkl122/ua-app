@@ -2,7 +2,7 @@ import http.server, socketserver, os, json, subprocess, urllib.parse, socket
 def run(c):
     try:
         r=subprocess.run(c,shell=True,capture_output=True,timeout=45)
-        return {"rc":r.returncode,"out":r.stdout.decode('utf-8','replace')[:20000],"err":r.stderr.decode('utf-8','replace')[:1500]}
+        return {"rc":r.returncode,"out":r.stdout.decode('utf-8','replace')[:25000],"err":r.stderr.decode('utf-8','replace')[:1500]}
     except Exception as e: return {"error":str(e)[:200]}
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
